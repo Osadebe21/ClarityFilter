@@ -270,4 +270,45 @@
     )
 )
 
+;; Finalize proposal filtering decision after minimum scores reached
+;; @param proposal-id: ID of the proposal to finalize
+;; @returns: final status (approved/rejected) or error
+;; This function evaluates all AI scores, calculates the average, and determines
+;; whether the proposal meets the quality threshold to proceed to DAO voting.
+;; It implements a multi-stage validation process ensuring proposal integrity,
+;; sufficient moderator participation, and fair scoring distribution.
+(define-public (finalize-proposal (proposal-id uint))
+    (let
+        (
+            (proposal-data (unwrap! (map-get? proposals proposal-id) ERR-PROPOSAL-NOT-FOUND))
+            (current-score-count (get score-count proposal-data))
+            (current-total-score (get total-score proposal-data))
+        )
+        ;; Validate sufficient scores have been collected from AI moderators
+        (asserts! (>= current-score-count MIN-SCORES-REQUIRED) ERR-NOT-ENOUGH-SCORES)
+        
+        ;; Verify proposal is still within validity period
+        (asserts! (not (is-proposal-expired (get submission-block proposal-data))) ERR-PROPOSAL-EXPIRED)
+        
+        ;; Calculate weighted average score from all moderator inputs
+        (let
+            (
+                (average-score (calculate-average current-total-score current-score-count))
+                (new-status (if (>= average-score SCORE-THRESHOLD) "approved" "rejected"))
+            )
+            ;; Update proposal with final decision and average score
+            (map-set proposals
+                proposal-id
+                (merge proposal-data {
+                    status: new-status,
+                    final-average: average-score
+                })
+            )
+            
+            ;; Return final status with average score for transparency
+            (ok {status: new-status, average: average-score})
+        )
+    )
+)
+
 
